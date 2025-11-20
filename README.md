@@ -2,12 +2,25 @@
 
 A plugin for pytest to evaluate non-deterministic agent components.
 
-## Installation
+## Installation & Setup
 
-Simply pip install it
+Simply pip install it.
 
 ```bash
 pip install quack-test
+```
+
+To use the LLM judge you will need to add the required config to your `.env` file.
+
+```bash
+# OpenAI Provider Configuration
+# Set to "OpenAI" or "AzureOpenAI"
+OPENAI_PROVIDER=OpenAI
+
+# Unified Configuration
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL_NAME=gpt-4
+OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
 ```
 
 ## Run tests
