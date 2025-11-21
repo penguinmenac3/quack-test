@@ -2,6 +2,8 @@
 
 A plugin for pytest to evaluate non-deterministic agent components.
 
+![A runber duckie taking a test](quack-test.jpg)
+
 ## Installation & Setup
 
 Simply pip install it.
