@@ -14,11 +14,11 @@ No existing code base. We are setting up the implementation of both decorators f
   - Execute the wrapped fixture `n` times and store all results in a list.
   - Return the list of results to ensure multiple sample outcomes are available for testing.
   - Ensure compatibility with pytest and unittest, specifically in fixture setup and teardown phases.
-- [ ] Define Decorator `nondeterministic_test(score)`:
+- [ ] Define Decorator `nondeterministic_test(threshold)`:
   - This decorator will wrap a test function.
   - Execute the wrapped test function `n` times.
   - Collect and calculate a score based on the test results (e.g., pass/fail tally).
-  - Assert the calculated score against the provided threshold (`score`) to determine test success or failure.
+  - Assert the calculated score against the provided threshold (`threshold`) to determine test success or failure.
   - Maintain compatibility with pytest and unittest, integrating seamlessly with result reporting and assertion mechanics.
 - [ ] Create `judge()` Functionality:
   - Develop the logic needed to assess test output against specific conditions.

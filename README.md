@@ -46,15 +46,21 @@ from quack_test import nondeterministic_fixture, nondeterministic_test, judge
 def sample_text():
     return f"I have {random.randint(1, 10)} apples."
 
-@nondeterministic_test(score=0.8)
+@nondeterministic_test(threshold=0.8)
 def test_apples(sample_text):
     return judge(sample_text, criterion="Has more than 1 apple")
 
-@nondeterministic_test(score=0.8)
+@nondeterministic_test(threshold=0.8)
 def test_apples_gt(sample_text):
     return judge(sample_text, gt="I have N (0-10) apples")
 
-@nondeterministic_test(score=0.8, should_fail=True)
+@nondeterministic_test(threshold=0.8, should_fail=True)
 def test_coal(sample_text):
     return judge(sample_text, criterion="Has only coal")
+
+class TestClassBased:
+    @nondeterministic_test(n=3, threshold=0.2)
+    def test_assert_only(self):
+        # Assert-only tests in classes should be treated as successful runs
+        return random.random()
 ```

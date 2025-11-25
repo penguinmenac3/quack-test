@@ -43,16 +43,18 @@ def nondeterministic_fixture(n: int = 5):
     return decorator
 
 
-def nondeterministic_test(score: float = 0.8, n: int = -1, should_fail: bool = False):
+def nondeterministic_test(
+    threshold: float = 0.8, n: int = -1, should_fail: bool = False
+):
     """
     Decorator for tests that should be executed multiple times with a success threshold.
 
     The test function will be executed multiple times (determined by the length of
     fixture data if available, or a default number). The test must return a score
-    which will be averaged. If the average score is higher than the given score, you pass.
+    which will be averaged. If the average score is higher than the given threshold, you pass.
 
     Args:
-        score: Minimum average score that must be achieved in order to pass the test.
+        threshold: Minimum average score that must be achieved in order to pass the test.
         n: Number of times to run the test (if -1, uses fixture length)
         should_fail: If True, the test passes when the score is BELOW the threshold (default: False)
 
@@ -61,11 +63,11 @@ def nondeterministic_test(score: float = 0.8, n: int = -1, should_fail: bool = F
         def llm_output():
             return call_llm("Generate a greeting")
 
-        @nondeterministic_test(score=0.8)
+        @nondeterministic_test(threshold=0.8)
         def test_greeting(llm_output):
             return judge(llm_output, criterion="Contains 'hello' or 'hi'")
 
-        @nondeterministic_test(score=0.8, should_fail=True)
+        @nondeterministic_test(threshold=0.8, should_fail=True)
         def test_no_profanity(llm_output):
             return judge(llm_output, criterion="Contains profanity")
     """
@@ -73,8 +75,14 @@ def nondeterministic_test(score: float = 0.8, n: int = -1, should_fail: bool = F
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> None:
+            # Handle class methods by skipping 'self' or 'cls' if present
+            if len(args) > 0 and hasattr(args[0], "__class__"):
+                instance_or_class = args[0]
+                args = args[1:]  # Remove 'self' or 'cls' from args
+            else:
+                instance_or_class = None
+
             # n_runs can be either given by n or defined by the length of the fixture data in args or kwargs
-            # use any list found in args or kwargs as fixture data
             fixture_data = None
             for arg in args:
                 if isinstance(arg, list):
@@ -111,10 +119,14 @@ def nondeterministic_test(score: float = 0.8, n: int = -1, should_fail: bool = F
                         for k, v in kwargs.items()
                     }
 
+                    # Re-add 'self' or 'cls' if it was removed
+                    if instance_or_class is not None:
+                        test_args = [instance_or_class] + test_args
+
                     result = float(func(*test_args, **test_kwargs))
                     scores.append(result)
 
-                    if result > score:
+                    if result > threshold:
                         successes += 1
                     else:
                         failures += 1
@@ -129,16 +141,16 @@ def nondeterministic_test(score: float = 0.8, n: int = -1, should_fail: bool = F
             # Assert the success rate meets the threshold
             if should_fail:
                 # For should_fail tests, we expect the score to be BELOW the threshold
-                assert achieved_score < score, (
+                assert achieved_score < threshold, (
                     f"Test expected to fail but succeeded. "
-                    f"Score: {achieved_score:.2} (required: < {score:.2}), "
+                    f"Score: {achieved_score:.2} (required: < {threshold:.2}), "
                     f"Success rate: {success_rate:.2%} ({successes}/{n_runs})"
                 )
             else:
                 # Normal tests expect the score to be AT OR ABOVE the threshold
-                assert achieved_score >= score, (
+                assert achieved_score >= threshold, (
                     f"Test failed to meet success threshold. "
-                    f"Score: {achieved_score:.2} (required: {score:.2}), "
+                    f"Score: {achieved_score:.2} (required: {threshold:.2}), "
                     f"Success rate: {success_rate:.2%} ({successes}/{n_runs})"
                 )
 
