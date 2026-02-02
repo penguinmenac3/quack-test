@@ -6,10 +6,11 @@ flaky behavior, particularly useful for LLM-based tests.
 """
 
 from quack_test.decorators import nondeterministic_fixture, nondeterministic_test
-from quack_test.judge import judge
+from quack_test.judge import configure_judge, judge
 
 __all__ = [
     "nondeterministic_fixture",
     "nondeterministic_test",
+    "configure_judge",
     "judge",
 ]

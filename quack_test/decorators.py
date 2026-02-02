@@ -106,6 +106,7 @@ def nondeterministic_test(
             successes = 0
             failures = 0
             scores = []
+            last_error_info = ""
 
             for i in range(n_runs):
                 try:
@@ -123,10 +124,23 @@ def nondeterministic_test(
                     if instance_or_class is not None:
                         test_args = [instance_or_class] + test_args
 
-                    result = float(func(*test_args, **test_kwargs))
-                    scores.append(result)
+                    try:
+                        result = func(*test_args, **test_kwargs)
+                        if result is None:
+                            result = 1.0, ""
+                        if isinstance(result, float):
+                            result = result, ""
+                        if isinstance(result, str):
+                            result = 1.0, result
+                    except AssertionError as e:
+                        last_error_info = str(e)
+                        result = 0.0, str(e)
+                    score, reason = result
+                    scores.append(score)
+                    if reason != "":
+                        last_error_info = reason
 
-                    if result > threshold:
+                    if score > threshold:
                         successes += 1
                     else:
                         failures += 1
@@ -139,12 +153,14 @@ def nondeterministic_test(
             achieved_score = sum(scores) / n_runs
 
             # Assert the success rate meets the threshold
+            error_info_text = f", {last_error_info}" if last_error_info != "" else ""
             if should_fail:
                 # For should_fail tests, we expect the score to be BELOW the threshold
                 assert achieved_score < threshold, (
                     f"Test expected to fail but succeeded. "
                     f"Score: {achieved_score:.2} (required: < {threshold:.2}), "
                     f"Success rate: {success_rate:.2%} ({successes}/{n_runs})"
+                    f"{error_info_text}"
                 )
             else:
                 # Normal tests expect the score to be AT OR ABOVE the threshold
@@ -152,6 +168,7 @@ def nondeterministic_test(
                     f"Test failed to meet success threshold. "
                     f"Score: {achieved_score:.2} (required: {threshold:.2}), "
                     f"Success rate: {success_rate:.2%} ({successes}/{n_runs})"
+                    f"{error_info_text}"
                 )
 
         return wrapper
