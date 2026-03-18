@@ -4,10 +4,11 @@ Decorators for handling nondeterministic tests and fixtures.
 
 import functools
 import pytest
+from _pytest.scope import _ScopeName
 from typing import Callable, Any, List
 
 
-def nondeterministic_fixture(n: int = 5):
+def nondeterministic_fixture(n: int = 5, scope: _ScopeName = "module"):
     """
     Decorator for fixtures that should be executed multiple times.
 
@@ -38,7 +39,7 @@ def nondeterministic_fixture(n: int = 5):
             return results
 
         # Mark this as a pytest fixture
-        return pytest.fixture(wrapper)
+        return pytest.fixture(wrapper, scope=scope)
 
     return decorator
 
