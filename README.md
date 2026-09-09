@@ -57,6 +57,64 @@ If you are choosing a bigger n, you are rather running a benchmark than just a t
 Here we assume, that if a feature is really broken, it does not only fail once, but more often.
 On the other side, if a feature works robustly, it will should not fail or at maximum once.
 
+### Async Tests
+
+Async test and fixture functions (`async def`) are supported natively and awaited on a single event loop shared across the whole test session — no manual `asyncio.run()` wrapping needed, and loop-bound resources (e.g. singleton agent or MCP clients created at module level) keep working across fixtures, runs and tests.
+
+```python
+@nondeterministic_fixture(n=5)
+async def agent_run():
+    return await my_agent.arun("Generate a greeting")
+
+@nondeterministic_test(threshold=0.8)
+async def test_agent_greeting(agent_run):
+    return judge(agent_run, criterion="Contains 'hello' or 'hi'")
+```
+
+### Parallel Execution
+
+Runs are executed sequentially by default. Since LLM calls are I/O-bound and independent, you can fan out with `parallel=True`. This also works on `nondeterministic_fixture` for concurrent sample generation.
+
+```python
+@nondeterministic_test(threshold=0.8, parallel=True)
+def test_judge_with_criterion(sample_text):
+    return judge(sample_text, criterion="More than 1 apple")
+```
+
+### Early Stopping
+
+With `stop_early=True`, runs stop as soon as the outcome is provably decided (pass or fail cannot change anymore), saving tokens on expensive evaluations. This assumes scores lie in `[0, 1]`, which is the scale the judge uses. Cannot be combined with `parallel=True`.
+
+```python
+@nondeterministic_test(threshold=0.8, stop_early=True)
+def test_judge_with_criterion(sample_text):
+    return judge(sample_text, criterion="More than 1 apple")
+```
+
+### Samples vs. Lists
+
+Only arguments of type `Samples` (returned automatically by `nondeterministic_fixture`) are indexed per run. Plain list arguments (e.g. chat histories) are passed to every run unchanged. To opt into per-run indexing for your own data, wrap it with `Samples(...)`:
+
+```python
+from quack_test import Samples
+
+@nondeterministic_test(n=1)  # n from Samples length if -1
+def test_messages(history, static_context):
+    # history is a Samples parameter: each run gets one conversation
+    # static_context is a plain list: passed unchanged to every run
+    ...
+```
+
+### Filtering With Markers
+
+All `nondeterministic_test` tests are automatically marked with the `nondeterministic` marker. To run your plain deterministic test suite without any quack tests:
+
+```bash
+pytest -m "not nondeterministic"
+```
+
+At the end of a test session, a summary of all quack test outcomes is printed.
+
 ### Judging via LLM
 
 In many cases it is hard to evaluate with code, if an answer is actually correct.
@@ -106,13 +164,15 @@ The following example code will fail and cause an error message.
 @nondeterministic_test(threshold=0.8)
 def test_assertion_demo_failure(sample_text):
     assert False, "This message is shown in the pytest summary."
-    # -> FAILED test/test_example.py::test_assertion_demo_failure - AssertionError: Test failed to meet success threshold. Score: 0.0 (required: 0.8), Success rate: 0.00% (0/5), This message is shown in the pytest summary.
+    # -> FAILED test/test_example.py::test_assertion_demo_failure - AssertionError: Test failed to meet success threshold. Score: 0.0 (required: 0.8), Success rate: 0.00% (0/5), run scores: [0.00, 0.00, 0.00, 0.00, 0.00], This message is shown in the pytest summary.
 
 @nondeterministic_test(threshold=0.8)
 def test_judge_demo_failure(sample_text):
     return judge(sample_text, criterion="Has only coal")
-    # -> FAILED test/test_example.py::test_judge_demo_failure - AssertionError: Test failed to meet success threshold. Score: 0.0 (required: 0.8), Success rate: 0.00% (0/5), Text: '3 apples.' Criterion: 'Has only coal'
+    # -> FAILED test/test_example.py::test_judge_demo_failure - AssertionError: Test failed to meet success threshold. Score: 0.0 (required: 0.8), Success rate: 0.00% (0/5), run scores: [0.00, 0.00, 0.00, 0.00, 0.00], Text: '3 apples.' Criterion: 'Has only coal'
 ```
+
+The failure message (and the session-end quack-test summary) always includes the per-run scores, which helps tune thresholds.
 
 ### Advanced Judge Setup
 
