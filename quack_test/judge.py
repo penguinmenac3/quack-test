@@ -18,6 +18,7 @@ def configure_judge(
     endpoint: str | None = None,
     api_version: str | None = None,
     model_name: str | None = None,
+    temperature: float | None = None,
 ) -> None:
     """Configure the judge by setting environment variables."""
     if provider:
@@ -30,6 +31,8 @@ def configure_judge(
         os.environ["OPENAI_API_VERSION"] = api_version
     if model_name:
         os.environ["OPENAI_MODEL_NAME"] = model_name
+    if temperature is not None:
+        os.environ["OPENAI_TEMPERATURE"] = str(temperature)
 
 
 @cache
@@ -102,10 +105,11 @@ def judge(
     
     # Make the API call
     client = _get_client()
+    temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.0"))
     response = client.chat.completions.create(
         model=os.getenv("OPENAI_MODEL_NAME", "gpt-4o"),
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
-        temperature=0.0,
+        temperature=temperature,
     )
     # Extract and return the score
     content = response.choices[0].message.content

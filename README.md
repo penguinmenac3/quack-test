@@ -115,6 +115,54 @@ pytest -m "not nondeterministic"
 
 At the end of a test session, a summary of all quack test outcomes is printed.
 
+### CSV result export
+
+Each session with nondeterministic tests also writes a timestamped CSV file in the current directory:
+
+```text
+20260910T153848447387Z_quack-test-results.csv
+```
+
+The CSV contains one row per test instance, including parametrized tests, with aggregate fields and repeated per-run columns:
+
+```text
+test_name,overall_score,threshold,passed,run_1_score,run_1_reason,run_2_score,run_2_reason,...
+```
+
+Use `--quack-results-dir` or `QUACK_RESULTS_DIR` to select the output directory:
+
+```bash
+pytest --quack-results-dir results
+```
+
+#### Structured per-run metrics
+
+For diagnostics such as latency, token usage, streamed chunk counts, answer text, or retrieved datasource metadata, return an `EvaluationResult`. Legacy return values (`(score, reason)`, a score, a reason string, or `None`) remain supported.
+
+```python
+from quack_test import EvaluationResult, nondeterministic_test
+
+@nondeterministic_test(threshold=0.8)
+def test_agent_response(agent_output):
+    return EvaluationResult(
+        score=1.0,
+        reason="response met the criterion",
+        metrics={
+            "time_to_first_token_s": 1.42,
+            "duration_s": 8.73,
+            "input_tokens": 1240,
+            "output_tokens": 386,
+            "reasoning_tokens": 0,
+            "output_chunks": 24,
+            "answer": agent_output.text,
+        },
+    )
+```
+
+Each metric is exported as a per-run column such as `run_1_duration_s`. Numeric metrics also receive per-test mean columns such as `mean_duration_s`; free-text metrics are not averaged. Missing metrics are left blank. Structured values are serialized as JSON, and CSV quoting preserves commas, quotes, and newlines.
+
+Do not include credentials, tokens, or other secrets in metric values.
+
 ### Judging via LLM
 
 In many cases it is hard to evaluate with code, if an answer is actually correct.

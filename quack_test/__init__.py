@@ -11,8 +11,10 @@ from quack_test.decorators import (
     nondeterministic_test,
 )
 from quack_test.judge import configure_judge, judge
+from quack_test.results import EvaluationResult
 
 __all__ = [
+    "EvaluationResult",
     "Samples",
     "nondeterministic_fixture",
     "nondeterministic_test",

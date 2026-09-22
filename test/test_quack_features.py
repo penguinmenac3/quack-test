@@ -7,12 +7,13 @@ required. End-to-end collection behavior is verified via pytester.
 """
 
 import asyncio
+import csv
 import time
 from dataclasses import dataclass
 
 import pytest
 
-from quack_test import Samples, nondeterministic_test
+from quack_test import EvaluationResult, Samples, nondeterministic_test
 
 pytest_plugins = ["pytester"]
 
@@ -265,6 +266,128 @@ def test_failure_message_includes_run_scores():
         AssertionError, match=r"run scores: \[1\.00, 0\.00, 1\.00, 1\.00, 1\.00\]"
     ):
         check()
+
+
+def test_evaluation_result_is_supported():
+    calls = []
+
+    @nondeterministic_test(n=2, threshold=0.5)
+    def check():
+        calls.append(1)
+        return EvaluationResult(
+            score=1.0,
+            reason="all assertions passed",
+            metrics={"duration_s": 1.5, "output_tokens": 12},
+        )
+
+    check()
+    assert len(calls) == 2
+
+
+def test_csv_export_contains_metrics_and_legacy_results(pytester):
+    pytester.makepyfile(
+        """
+        import csv
+        from pathlib import Path
+        import pytest
+        from quack_test import EvaluationResult, nondeterministic_test
+
+        @nondeterministic_test(n=2, threshold=0.5)
+        def test_metrics():
+            test_metrics.calls += 1
+            if test_metrics.calls == 1:
+                return EvaluationResult(
+                    score=1.0,
+                    reason='quoted, reason',
+                    metrics={
+                        'duration_s': 2.0,
+                        'output_tokens': 10,
+                        'answer': 'line 1, "quoted"\\nline 2',
+                        'custom_metric': 4,
+                        'flag': True,
+                        'metadata': {'source': 'retriever'},
+                        'missing': None,
+                    },
+                )
+            return EvaluationResult(
+                score=0.0,
+                reason='second run',
+                metrics={'duration_s': 4.0, 'custom_metric': 6},
+            )
+        test_metrics.calls = 0
+
+        @pytest.mark.parametrize('value', [1, 2])
+        @nondeterministic_test(n=1, threshold=0.5)
+        def test_parametrized(value):
+            return EvaluationResult(score=1.0, metrics={'input_tokens': value})
+
+        @nondeterministic_test(n=1, threshold=0.0)
+        def test_tuple():
+            return 1.0, 'tuple'
+
+        @nondeterministic_test(n=1, threshold=0.0)
+        def test_scalar():
+            return 1
+
+        @nondeterministic_test(n=1, threshold=0.0)
+        def test_string():
+            return 'string reason'
+
+        @nondeterministic_test(n=1, threshold=0.0)
+        def test_none():
+            return None
+        """
+    )
+    result = pytester.runpytest_subprocess("--quack-results-dir", "results", "-q")
+    result.assert_outcomes(passed=7)
+
+    csv_files = list(pytester.path.joinpath("results").glob("*_quack-test-results.csv"))
+    assert len(csv_files) == 1
+    with csv_files[0].open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+        headers = reader.fieldnames
+
+    assert headers is not None
+    assert headers[:8] == [
+        "test_name",
+        "planned_runs",
+        "executed_runs",
+        "successful_runs",
+        "overall_score",
+        "threshold",
+        "should_fail",
+        "passed",
+    ]
+    assert headers[8:15] == [
+        "run_1_score",
+        "run_1_reason",
+        "run_1_duration_s",
+        "run_1_input_tokens",
+        "run_1_output_tokens",
+        "run_1_answer",
+        "run_1_custom_metric",
+    ]
+    assert "run_2_duration_s" in headers
+    assert headers[-4:] == [
+        "mean_duration_s",
+        "mean_input_tokens",
+        "mean_output_tokens",
+        "mean_custom_metric",
+    ]
+    metrics_row = next(row for row in rows if row["test_name"].endswith("test_metrics"))
+    assert metrics_row["run_1_answer"] == 'line 1, "quoted"\nline 2'
+    assert metrics_row["run_2_answer"] == ""
+    assert metrics_row["run_1_flag"] == "True"
+    assert metrics_row["run_1_metadata"] == '{"source": "retriever"}'
+    assert metrics_row["run_1_missing"] == ""
+    assert metrics_row["mean_duration_s"] == "3.0"
+    assert metrics_row["mean_output_tokens"] == "10.0"
+    assert metrics_row["mean_custom_metric"] == "5.0"
+    assert "mean_flag" not in headers
+    assert any("test_parametrized[1]" in row["test_name"] for row in rows)
+    assert any("test_parametrized[2]" in row["test_name"] for row in rows)
+    assert len(rows) == 7
 
 
 def test_nondeterministic_marker_applied():

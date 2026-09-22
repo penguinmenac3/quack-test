@@ -11,6 +11,7 @@ from typing import Callable, Any, Literal
 
 from quack_test._runtime import run_coroutine
 from quack_test.plugin import record_result
+from quack_test.results import EvaluationResult
 
 # Fixture scopes ("function" ... "session"); defined locally instead of
 # importing the private _pytest.scope module (renamed in pytest 9.1).
@@ -49,16 +50,22 @@ def _expects_self(func: Callable) -> bool:
     return bool(params) and params[0] in ("self", "cls")
 
 
-def _to_score(result: Any) -> tuple[float, str]:
-    """Normalize a test return value into a (score, reason) pair."""
+def _to_result(result: Any) -> EvaluationResult:
+    """Normalize supported test return values into an EvaluationResult."""
+    if isinstance(result, EvaluationResult):
+        return EvaluationResult(
+            score=float(result.score),
+            reason=str(result.reason),
+            metrics=dict(result.metrics),
+        )
     if result is None:
-        return 1.0, ""
+        return EvaluationResult(score=1.0)
     if isinstance(result, numbers.Real):
-        return float(result), ""
+        return EvaluationResult(score=float(result))
     if isinstance(result, str):
-        return 1.0, result
+        return EvaluationResult(score=1.0, reason=result)
     score, reason = result
-    return float(score), str(reason)
+    return EvaluationResult(score=float(score), reason=str(reason))
 
 
 def _decision_final(
@@ -241,26 +248,30 @@ def nondeterministic_test(
                     call_args = [instance_or_class] + call_args
                 return call_args, call_kwargs
 
-            def run_one(i: int) -> tuple[float, str]:
+            def run_one(i: int) -> EvaluationResult:
                 try:
                     call_args, call_kwargs = build_call(i)
-                    return _to_score(func(*call_args, **call_kwargs))
+                    return _to_result(func(*call_args, **call_kwargs))
                 except AssertionError as e:
-                    return 0.0, str(e)
+                    return EvaluationResult(score=0.0, reason=str(e))
                 except Exception as e:
-                    return 0.0, f"{type(e).__name__}: {e}"
+                    return EvaluationResult(
+                        score=0.0, reason=f"{type(e).__name__}: {e}"
+                    )
 
-            async def run_one_async(i: int) -> tuple[float, str]:
+            async def run_one_async(i: int) -> EvaluationResult:
                 try:
                     call_args, call_kwargs = build_call(i)
-                    return _to_score(await func(*call_args, **call_kwargs))
+                    return _to_result(await func(*call_args, **call_kwargs))
                 except AssertionError as e:
-                    return 0.0, str(e)
+                    return EvaluationResult(score=0.0, reason=str(e))
                 except Exception as e:
-                    return 0.0, f"{type(e).__name__}: {e}"
+                    return EvaluationResult(
+                        score=0.0, reason=f"{type(e).__name__}: {e}"
+                    )
 
             # Run the test n times
-            outcomes: list[tuple[float, str]]
+            outcomes: list[EvaluationResult]
             if parallel:
 
                 async def _run_parallel():
@@ -284,7 +295,10 @@ def nondeterministic_test(
                     for i in range(n_runs):
                         results.append(await run_one_async(i))
                         if stop_early and _decision_final(
-                            [s for s, _ in results], n_runs, threshold, should_fail
+                            [result.score for result in results],
+                            n_runs,
+                            threshold,
+                            should_fail,
                         ):
                             break
                     return results
@@ -295,13 +309,18 @@ def nondeterministic_test(
                 for i in range(n_runs):
                     outcomes.append(run_one(i))
                     if stop_early and _decision_final(
-                        [s for s, _ in outcomes], n_runs, threshold, should_fail
+                        [result.score for result in outcomes],
+                        n_runs,
+                        threshold,
+                        should_fail,
                     ):
                         break
 
-            scores = [s for s, _ in outcomes]
-            reasons = [r for _, r in outcomes if r != ""]
-            last_error_info = reasons[-1] if reasons else ""
+            scores = [result.score for result in outcomes]
+            run_reasons = [result.reason for result in outcomes]
+            run_metrics = [result.metrics for result in outcomes]
+            non_empty_reasons = [reason for reason in run_reasons if reason]
+            last_error_info = non_empty_reasons[-1] if non_empty_reasons else ""
             executed = len(outcomes)
             successes = sum(1 for s in scores if s >= threshold)
 
@@ -324,6 +343,8 @@ def nondeterministic_test(
                 should_fail=should_fail,
                 passed=passed,
                 scores=scores,
+                reasons=run_reasons,
+                metrics=run_metrics,
             )
 
             # Assert the success rate meets the threshold
